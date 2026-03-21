@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+python-multipart
+
+pydantic
+python-dotenv
+
+requests
+
+boto3
+botocore
+
+cachetools
+python-dateutil
