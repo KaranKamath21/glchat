@@ -1,0 +1,39 @@
+{
+  "env": "local",
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000
+  },
+  "llm": {
+    "provider": "groq",
+    "groq": {
+      "chat_model": "llama-3.3-70b-versatile",
+      "temperature": 0
+    }
+  },
+  "gitlab": {
+    "base_url": "https://gitlab.example.com",
+    "api_prefix": "/api/v4",
+    "verify_ssl": true,
+    "default_project": ""
+  },
+  "aws": {
+    "bedrock_region": "us-east-1",
+    "model_id": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "secret_name": "gitlab-ai-agent",
+    "secret_region": "us-east-1",
+    "cache": {
+      "max_size": 10,
+      "ttl_seconds": 3600
+    }
+  },
+  "limits": {
+    "http_timeout": 30,
+    "llm_timeout": 60,
+    "max_search_results": 20
+  },
+  "app": {
+    "title": "GitLab AI Agent",
+    "version": "1.0.0"
+  }
+}
