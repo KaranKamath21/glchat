@@ -48,6 +48,9 @@ def get_local_secrets():
             "access_key_id": os.getenv("AWS_ACCESS_KEY_ID", ""),
             "secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
         },
+        "database": {
+            "postgres_uri": os.getenv("POSTGRES_URI", ""),
+        },
     }
 
 

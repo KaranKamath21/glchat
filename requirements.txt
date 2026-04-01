@@ -7,11 +7,13 @@ langchain-core
 langchain-groq
 langchain_aws
 langgraph
+langgraph-checkpoint-postgres
 
 pydantic
 python-dotenv
 
 requests
+psycopg[binary]
 
 boto3
 botocore

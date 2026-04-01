@@ -50,3 +50,6 @@ GITLAB_TOKEN = _secret_config["gitlab"]["token"]
 GROQ_API_KEY = _secret_config["llm"]["groq_api_key"]
 AWS_ACCESS_KEY_ID = _secret_config["aws"]["access_key_id"]
 AWS_SECRET_ACCESS_KEY = _secret_config["aws"]["secret_access_key"]
+
+# Postgres connection string for LangGraph conversation memory (checkpointer).
+POSTGRES_URI = _secret_config.get("database", {}).get("postgres_uri", "")

@@ -1,9 +1,10 @@
-"""Conversational agent built on LangGraph.
+"""Conversational agent built on LangGraph with PostgreSQL-backed memory.
 
 A minimal ``MessagesState`` graph with a single agent node. The node binds the
 ``GitLabAction`` schema as a tool: if the model calls it, we run the read-only
 resolvers and return an approval-gated proposal; otherwise the model's plain
-reply is a normal chat turn.
+reply is a normal chat turn. The compiled graph uses the Postgres checkpointer,
+so every turn is contextual and history persists across restarts.
 """
 
 import logging
@@ -17,11 +18,11 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langgraph.graph import StateGraph, START, END, MessagesState
-from langgraph.checkpoint.memory import InMemorySaver
 
 from agents.llm import get_groq_model, get_bedrock_model
 from agents.prompt import build_chatbot_prompt
 from agents.schema import GitLabAction
+from agents.memory import get_checkpointer, memory_lock
 from services.gitlab_service import (
     build_action_plan,
     GitLabAPIError,
@@ -92,7 +93,7 @@ def _graph():
     builder.add_node("agent", _agent_node)
     builder.add_edge(START, "agent")
     builder.add_edge("agent", END)
-    return builder.compile(checkpointer=InMemorySaver())
+    return builder.compile(checkpointer=get_checkpointer())
 
 
 def _default_reply(action: GitLabAction) -> str:
@@ -104,7 +105,8 @@ def _default_reply(action: GitLabAction) -> str:
 def chat_turn(thread_id: str, text: str) -> dict:
     """Run one conversation turn. Returns {'reply': str, 'proposal': dict|None}."""
     config = {"configurable": {"thread_id": thread_id}}
-    result = _graph().invoke({"messages": [HumanMessage(content=text)]}, config)
+    with memory_lock():
+        result = _graph().invoke({"messages": [HumanMessage(content=text)]}, config)
 
     ai = next((m for m in reversed(result["messages"]) if isinstance(m, AIMessage)), None)
     if ai is None:
@@ -139,9 +141,10 @@ def chat_turn(thread_id: str, text: str) -> dict:
 
 
 def get_history(thread_id: str) -> list:
-    """Return the conversation so far as [{'role','text'}] for the UI."""
+    """Return the persisted conversation as [{'role','text'}] for the UI."""
     config = {"configurable": {"thread_id": thread_id}}
-    snapshot = _graph().get_state(config)
+    with memory_lock():
+        snapshot = _graph().get_state(config)
 
     values = getattr(snapshot, "values", None) or {}
     out = []
