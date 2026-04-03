@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GitLab AI Agent</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🦊</span>
+      <div>
+        <h1>GitLab AI Agent</h1>
+        <p class="sub">Chat · remembers context · previews every payload · nothing sent until you approve</p>
+      </div>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <main>
+    <div id="chat" class="chat"></div>
+
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="Ask me anything, or say what to do — e.g. “What can you do?” or “Create an issue in B2B Chatbot titled Fix login, assign jdoe, label bug.”"></textarea>
+      <button id="sendBtn" class="btn primary">Send</button>
+      <button id="newBtn" class="btn ghost" title="Start a fresh conversation">New chat</button>
+    </div>
+    <div id="composerStatus" class="status"></div>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
