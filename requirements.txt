@@ -20,3 +20,6 @@ botocore
 
 cachetools
 python-dateutil
+
+pytest
+pytest-mock
