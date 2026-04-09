@@ -13,29 +13,35 @@ from pydantic import BaseModel, Field
 ACTION_CREATE_ISSUE = "create_issue"
 ACTION_UPDATE_ISSUE = "update_issue"
 ACTION_ADD_COMMENT = "add_comment"
+ACTION_LINK_ISSUES = "link_issues"
+ACTION_CREATE_CHILD_ITEM = "create_child_item"
 
 ACTIONS = [
     ACTION_CREATE_ISSUE,
     ACTION_UPDATE_ISSUE,
     ACTION_ADD_COMMENT,
+    ACTION_LINK_ISSUES,
+    ACTION_CREATE_CHILD_ITEM,
 ]
 
 
 class GitLabAction(BaseModel):
     """Propose a GitLab issue or comment action for the user to approve.
 
-    Call this tool ONLY when the user is asking to CREATE or EDIT an issue or
-    ADD a comment. Extract the fields from the request and the conversation so
-    far. This tool does NOT execute anything — it merely prepares a payload
-    that the user reviews and approves in the UI. For greetings, questions
-    about capabilities, or any non-actionable message, do NOT call this tool;
-    reply in plain text instead.
+    Call this tool ONLY when the user is asking to CREATE or EDIT an issue, ADD a
+    comment, LINK two issues, or CREATE a child item (sub-task) under a parent
+    issue. Extract the fields from the request
+    and the conversation so far. This tool does NOT execute anything — it merely
+    prepares a payload that the user reviews and approves in the UI. For greetings,
+    questions about capabilities, or any non-actionable message, do NOT call this
+    tool; reply in plain text instead.
     """
 
     action: str = Field(
         description=(
             "The type of action. One of: 'create_issue', 'update_issue', "
-            "'add_comment'."
+            "'add_comment', 'link_issues' (relate/block two issues), "
+            "'create_child_item' (create a sub-item under a parent issue)."
         )
     )
 
@@ -92,4 +98,27 @@ class GitLabAction(BaseModel):
     comments: Optional[List[str]] = Field(
         default=None,
         description="One or more comment/note bodies to post (initial comments on create, or the note for add_comment).",
+    )
+
+    # ── Linked items (link_issues) ────────────────────────────────────────
+    target_project: Optional[str] = Field(
+        default=None,
+        description="For link_issues: the target issue's project (name/path). Defaults to the source project if omitted.",
+    )
+    target_issue_iid: Optional[int] = Field(
+        default=None, description="For link_issues: the #IID of the issue to link to. `issue_iid` is the source issue."
+    )
+    link_type: Optional[str] = Field(
+        default=None,
+        description="For link_issues: relationship type — 'relates_to' (default), 'blocks', or 'is_blocked_by'.",
+    )
+
+    # ── Child items (create_child_item) ───────────────────────────────────
+    parent_issue_iid: Optional[int] = Field(
+        default=None,
+        description="For create_child_item: the #IID of the parent issue the new child item belongs under.",
+    )
+    work_item_type: Optional[str] = Field(
+        default=None,
+        description="For create_child_item: the child's work-item type, e.g. 'task' (default) or 'issue'.",
     )

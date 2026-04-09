@@ -17,7 +17,7 @@ function newThreadId() {
 const $ = (id) => document.getElementById(id);
 
 // ── Field type registry (payload editing) ───────────────────────────────
-const INT_KEYS = ["milestone_id"];
+const INT_KEYS = ["milestone_id", "target_project_id", "target_issue_iid", "parent_id"];
 const BOOL_KEYS = ["confidential"];
 const INT_LIST_KEYS = ["assignee_ids", "label_ids"];
 const STR_LIST_KEYS = ["labels", "add_labels", "remove_labels"];
@@ -40,6 +40,9 @@ const LABELS = {
   confidential: "Confidential",
   state_event: "State event (close/reopen)",
   time_estimate: "Time estimate (e.g. 3h30m)", comments: "Comments (one per line)",
+  target_project_id: "Target project ID", target_issue_iid: "Target issue IID",
+  link_type: "Link type (relates_to/blocks/is_blocked_by)", parent_id: "Parent work item ID",
+  work_item_type: "Work item type (task/issue)",
 };
 
 // ── Init ──────────────────────────────────────────────────────────────────
@@ -56,7 +59,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   await loadHistory();
   if (!$("chat").children.length) {
-    addBubble("assistant", "Hi! I can create and edit GitLab issues and add comments — and I'll always show you the exact payload for approval before anything is sent. Ask me “what can you do?” or just describe what you need.");
+    addBubble("assistant", "Hi! I can create and edit GitLab issues, add comments, link issues and add child items — and I'll always show you the exact payload for approval before anything is sent. Ask me “what can you do?” or just describe what you need.");
   }
 });
 

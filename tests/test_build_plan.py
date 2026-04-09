@@ -96,6 +96,51 @@ def test_recurring_task_action_is_rejected():
             action="create_recurring_task", project="Mobile App", title="X"))
 
 
+def test_link_issues():
+    action = GitLabAction(
+        action="link_issues", project="Mobile App", issue_iid=10,
+        target_issue_iid=20, link_type="blocks",
+    )
+    plan = build_action_plan(action)
+    assert plan["endpoint"] == {"method": "POST", "path": "/projects/42/issues/10/links"}
+    p = plan["payload"]
+    assert p["target_issue_iid"] == 20
+    assert p["link_type"] == "blocks"
+    assert p["target_project_id"] == 42  # defaults to source project
+
+
+def test_create_child_item_resolves_parent_and_labels(monkeypatch):
+    monkeypatch.setattr(svc.gl, "get_issue", lambda pid, iid: {"id": 9001, "iid": iid, "title": "parent"})
+    action = GitLabAction(
+        action="create_child_item", project="Mobile App", parent_issue_iid=5,
+        title="Write unit tests", work_item_type="task",
+        assignees=["jdoe"], labels=["testing"],
+        acceptance_criteria=["Coverage > 80%"],
+    )
+    plan = build_action_plan(action)
+    assert plan["endpoint"] == {"method": "POST", "path": "/projects/42/-/work_items"}
+    p = plan["payload"]
+    assert p["title"] == "Write unit tests"
+    assert p["work_item_type"] == "task"
+    assert p["parent_id"] == 9001          # parent iid → global work item id
+    assert p["assignee_ids"] == [7]
+    assert p["label_ids"] == [100]         # work items use label IDs
+    assert "## Acceptance Criteria" in p["description"]
+
+
+def test_work_item_body_nesting():
+    from services.gitlab_service import _build_work_item_body
+    body = _build_work_item_body({
+        "title": "Child", "work_item_type": "task",
+        "description": "do it", "assignee_ids": [7], "label_ids": [100], "parent_id": 9001,
+    })
+    assert body["work_item_type_name"] == "task"
+    assert body["features"]["hierarchy"]["parent_id"] == 9001
+    assert body["features"]["assignees"]["assignee_ids"] == [7]
+    assert body["features"]["labels"]["label_ids"] == [100]
+    assert body["features"]["description"]["description"] == "do it"
+
+
 def test_missing_project_warns():
     action = GitLabAction(action="create_issue", title="No project")
     plan = build_action_plan(action)

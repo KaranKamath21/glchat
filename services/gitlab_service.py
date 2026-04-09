@@ -8,8 +8,8 @@ This module has a strict split:
   * READ-ONLY helpers (resolvers, ``get_issue``, ``build_action_plan``) may run
     automatically to assemble a payload.
   * MUTATING helpers (``create_issue``, ``update_issue``, ``add_comment``,
-    ``set_time_estimate``) and ``execute_plan`` are only ever called from the
-    approval-gated /api/execute endpoint.
+    ``set_time_estimate``, issue links, work items) and ``execute_plan`` are
+    only ever called from the approval-gated /api/execute endpoint.
 """
 
 import logging
@@ -30,6 +30,8 @@ from agents.schema import (
     ACTION_CREATE_ISSUE,
     ACTION_UPDATE_ISSUE,
     ACTION_ADD_COMMENT,
+    ACTION_LINK_ISSUES,
+    ACTION_CREATE_CHILD_ITEM,
 )
 
 logger = logging.getLogger(__name__)
@@ -170,6 +172,13 @@ class GitLabClient:
     def add_comment(self, project_id, iid: int, body: str) -> dict:
         return self.post(f"/projects/{project_id}/issues/{iid}/notes", {"body": body})
 
+    def create_issue_link(self, project_id, iid: int, payload: dict) -> dict:
+        return self.post(f"/projects/{project_id}/issues/{iid}/links", clean(payload))
+
+    def create_work_item(self, project_id, body: dict) -> dict:
+        # Experimental Work Items API; note the '/-/' segment.
+        return self.post(f"/projects/{project_id}/-/work_items", body)
+
 
 def clean(payload: dict) -> dict:
     """Drop keys whose value is None so we never send unintended nulls."""
@@ -208,6 +217,18 @@ def _resolve_assignees(project, names, notes, warnings) -> list:
             notes.append(f"Assignee '{name}' → @{user['username']} (id {user['id']})")
         else:
             warnings.append(f"User '{name}' not found — skipped")
+    return ids
+
+
+def _resolve_label_ids(project_id, names, notes, warnings) -> list:
+    ids = []
+    for name in names or []:
+        label = gl.find_label(project_id, name)
+        if label:
+            ids.append(label["id"])
+            notes.append(f"Label '{name}' → id {label['id']}")
+        else:
+            warnings.append(f"Label '{name}' not found in project — skipped")
     return ids
 
 
@@ -330,6 +351,52 @@ def build_action_plan(action: GitLabAction) -> dict:
             warnings.append("No issue IID given — required to comment")
         method, path = "POST", f"/projects/{project_id}/issues/{action.issue_iid}/notes"
 
+    # ── LINK ISSUES ──────────────────────────────────────────────────────
+    elif action.action == ACTION_LINK_ISSUES:
+        target_project_id = project_id
+        if action.target_project:
+            try:
+                tproj = gl.find_project(action.target_project)
+            except GitLabAPIError as e:
+                tproj = None
+                warnings.append(f"Target project lookup failed: {e.message}")
+            if tproj:
+                target_project_id = tproj["id"]
+                notes.append(f"Target project '{action.target_project}' → id {tproj['id']}")
+            else:
+                warnings.append(f"Target project '{action.target_project}' not found")
+        payload["target_project_id"] = target_project_id
+        payload["target_issue_iid"] = action.target_issue_iid
+        payload["link_type"] = action.link_type or "relates_to"
+        if action.issue_iid is None:
+            warnings.append("No source issue IID — required to link")
+        if action.target_issue_iid is None:
+            warnings.append("No target issue IID — required to link")
+        method, path = "POST", f"/projects/{project_id}/issues/{action.issue_iid}/links"
+
+    # ── CREATE CHILD ITEM (work item under a parent issue) ────────────────
+    elif action.action == ACTION_CREATE_CHILD_ITEM:
+        payload["title"] = action.title
+        payload["work_item_type"] = action.work_item_type or "task"
+        payload["description"] = _compose_description(action.description, action.acceptance_criteria)
+        if project_id and action.assignees:
+            payload["assignee_ids"] = _resolve_assignees(project, action.assignees, notes, warnings)
+        if project_id and action.labels:
+            payload["label_ids"] = _resolve_label_ids(project_id, action.labels, notes, warnings)
+        # Resolve the parent issue's global work-item id (hierarchy uses id, not iid).
+        if project_id and action.parent_issue_iid is not None:
+            try:
+                parent = gl.get_issue(project_id, action.parent_issue_iid)
+                payload["parent_id"] = parent.get("id")
+                notes.append(f"Parent issue #{action.parent_issue_iid} → work item id {parent.get('id')}")
+            except GitLabAPIError as e:
+                warnings.append(f"Parent issue lookup failed: {e.message}")
+        else:
+            warnings.append("No parent issue IID — required to create a child item")
+        if not action.title:
+            warnings.append("No title for the child item")
+        method, path = "POST", f"/projects/{project_id}/-/work_items"
+
     else:
         raise ValueError(f"Unsupported action: {action.action}")
 
@@ -353,6 +420,12 @@ def _summarize(action: GitLabAction, target: dict) -> str:
         return f"Update issue #{action.issue_iid} in {proj}"
     if action.action == ACTION_ADD_COMMENT:
         return f"Add comment to issue #{action.issue_iid} in {proj}"
+    if action.action == ACTION_LINK_ISSUES:
+        rel = (action.link_type or "relates_to").replace("_", " ")
+        return f"Link issue #{action.issue_iid} — {rel} — #{action.target_issue_iid} in {proj}"
+    if action.action == ACTION_CREATE_CHILD_ITEM:
+        kind = action.work_item_type or "task"
+        return f'Create child {kind} "{action.title or "(untitled)"}" under issue #{action.parent_issue_iid} in {proj}'
     return action.action
 
 
@@ -396,10 +469,43 @@ def execute_plan(plan: dict) -> dict:
         issue = gl.get_issue(project_id, issue_iid)
         results["web_url"] = issue.get("web_url")
 
+    elif action == ACTION_LINK_ISSUES:
+        link = gl.create_issue_link(project_id, issue_iid, payload)
+        results["steps"].append({"step": "link_issues", "ok": True, "link_type": payload.get("link_type")})
+        # The links endpoint returns the (source) issue link; surface its web_url if present.
+        results["web_url"] = (link.get("source_issue") or {}).get("web_url") if isinstance(link, dict) else None
+
+    elif action == ACTION_CREATE_CHILD_ITEM:
+        body = _build_work_item_body(payload)
+        item = gl.create_work_item(project_id, body)
+        results["steps"].append({"step": "create_child_item", "ok": True, "id": item.get("id")})
+        results["web_url"] = item.get("web_url")
+        results["work_item"] = item
+
     else:
         raise ValueError(f"Unsupported action: {action}")
 
     return results
+
+
+def _build_work_item_body(payload: dict) -> dict:
+    """Assemble the nested Work Items create body from the flat, edited payload."""
+    body = {
+        "title": payload.get("title"),
+        "work_item_type_name": payload.get("work_item_type") or "task",
+    }
+    features = {}
+    if payload.get("description"):
+        features["description"] = {"description": payload["description"]}
+    if payload.get("assignee_ids"):
+        features["assignees"] = {"assignee_ids": payload["assignee_ids"]}
+    if payload.get("label_ids"):
+        features["labels"] = {"label_ids": payload["label_ids"]}
+    if payload.get("parent_id") is not None:
+        features["hierarchy"] = {"parent_id": payload["parent_id"]}
+    if features:
+        body["features"] = features
+    return body
 
 
 def _run_issue_extras(project_id, iid, extras, results):
