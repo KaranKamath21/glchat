@@ -15,6 +15,7 @@ ACTION_UPDATE_ISSUE = "update_issue"
 ACTION_ADD_COMMENT = "add_comment"
 ACTION_LINK_ISSUES = "link_issues"
 ACTION_CREATE_CHILD_ITEM = "create_child_item"
+ACTION_GET_ISSUE = "get_issue"
 
 ACTIONS = [
     ACTION_CREATE_ISSUE,
@@ -22,15 +23,19 @@ ACTIONS = [
     ACTION_ADD_COMMENT,
     ACTION_LINK_ISSUES,
     ACTION_CREATE_CHILD_ITEM,
+    ACTION_GET_ISSUE,
 ]
+
+# Read-only actions execute immediately (no approval gate).
+READ_ACTIONS = {ACTION_GET_ISSUE}
 
 
 class GitLabAction(BaseModel):
     """Propose a GitLab issue or comment action for the user to approve.
 
     Call this tool ONLY when the user is asking to CREATE or EDIT an issue, ADD a
-    comment, LINK two issues, or CREATE a child item (sub-task) under a parent
-    issue. Extract the fields from the request
+    comment, LINK two issues, CREATE a child item (sub-task) under a parent issue,
+    or VIEW/SHOW an existing issue (get_issue). Extract the fields from the request
     and the conversation so far. This tool does NOT execute anything — it merely
     prepares a payload that the user reviews and approves in the UI. For greetings,
     questions about capabilities, or any non-actionable message, do NOT call this
@@ -41,7 +46,8 @@ class GitLabAction(BaseModel):
         description=(
             "The type of action. One of: 'create_issue', 'update_issue', "
             "'add_comment', 'link_issues' (relate/block two issues), "
-            "'create_child_item' (create a sub-item under a parent issue)."
+            "'create_child_item' (create a sub-item under a parent issue), "
+            "'get_issue' (view/show an existing issue's details)."
         )
     )
 

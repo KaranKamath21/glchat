@@ -21,10 +21,15 @@ from langgraph.graph import StateGraph, START, END, MessagesState
 
 from agents.llm import get_groq_model, get_bedrock_model
 from agents.prompt import build_chatbot_prompt
-from agents.schema import GitLabAction
+from agents.schema import (
+    GitLabAction,
+    READ_ACTIONS,
+    ACTION_GET_ISSUE,
+)
 from agents.memory import get_checkpointer, memory_lock
 from services.gitlab_service import (
     build_action_plan,
+    build_issue_view,
     GitLabAPIError,
 )
 
@@ -113,7 +118,7 @@ def chat_turn(thread_id: str, text: str) -> dict:
         return {"reply": "…", "proposal": None}
 
     reply = _text_of(ai)
-    result = {"reply": reply or "…", "proposal": None}
+    result = {"reply": reply or "…", "proposal": None, "issue": None}
 
     action_call = next(
         (tc for tc in (ai.tool_calls or []) if tc["name"] == GitLabAction.__name__), None
@@ -128,16 +133,30 @@ def chat_turn(thread_id: str, text: str) -> dict:
         result["reply"] = reply or "I couldn't understand that request."
         return result
 
-    try:
-        result["proposal"] = build_action_plan(action)
-        result["reply"] = reply or _default_reply(action)
-    except GitLabAPIError as e:
-        result["reply"] = (reply + "\n\n" if reply else "") + f"I couldn't resolve references: {e.message}"
-    except Exception as e:
-        logger.error("[Chat] Failed to build action from tool call: %s", e)
-        result["reply"] = (reply + "\n\n" if reply else "") + f"I couldn't build that action: {e}"
+    if action.action in READ_ACTIONS:
+        # Read-only: run immediately, no approval gate.
+        read = _run_read_action(action)
+        result.update(read)
+        result["reply"] = (reply + "\n\n" if reply else "") + read.get("summary", "")
+    else:
+        try:
+            result["proposal"] = build_action_plan(action)
+            result["reply"] = reply or _default_reply(action)
+        except GitLabAPIError as e:
+            result["reply"] = (reply + "\n\n" if reply else "") + f"I couldn't resolve references: {e.message}"
+        except Exception as e:
+            logger.error("[Chat] Failed to build action from tool call: %s", e)
+            result["reply"] = (reply + "\n\n" if reply else "") + f"I couldn't build that action: {e}"
 
     return result
+
+
+def _run_read_action(action: GitLabAction) -> dict:
+    """Run a read-only action and return the UI keys (issue) + summary."""
+    if action.action == ACTION_GET_ISSUE:
+        view = build_issue_view(action)
+        return {"issue": view.get("issue"), "summary": view["summary"]}
+    return {"summary": ""}
 
 
 def get_history(thread_id: str) -> list:

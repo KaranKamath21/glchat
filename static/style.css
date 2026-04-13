@@ -133,6 +133,28 @@ textarea { resize: vertical; }
 .advanced .hint { font-size: 12px; color: var(--muted); }
 .advanced .hint code { color: var(--blue); }
 
+/* ── Read-only issue card ── */
+.msg.assistant:has(.issue-view) { justify-content: stretch; }
+.bubble:has(.issue-view) { max-width: 100%; width: 100%; }
+.issue-view {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card-2);
+  padding: 14px 16px;
+}
+.issue-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.issue-title { font-weight: 600; font-size: 15px; }
+.issue-state { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; padding: 2px 8px; border-radius: 20px; }
+.issue-state.opened { background: rgba(63,185,80,.18); color: var(--green); }
+.issue-state.closed { background: rgba(248,81,73,.18); color: var(--red); }
+.issue-meta { display: grid; grid-template-columns: 130px 1fr; gap: 4px 12px; margin: 0 0 10px; font-size: 13px; }
+.issue-meta dt { color: var(--muted); }
+.issue-meta dd { margin: 0; }
+.issue-desc { font-size: 13px; border-top: 1px solid var(--border); padding-top: 10px; max-height: 320px; overflow-y: auto; white-space: normal; }
+.issue-link { margin-top: 10px; }
+.issue-link a { color: var(--blue); font-size: 13px; }
+
 /* ── Proposal card (inline in an assistant bubble) ── */
 .msg.assistant:has(.proposal) { justify-content: stretch; }
 .bubble:has(.proposal) { max-width: 100%; width: 100%; }

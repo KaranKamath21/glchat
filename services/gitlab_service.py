@@ -412,6 +412,74 @@ def build_action_plan(action: GitLabAction) -> dict:
     }
 
 
+def _normalize_issue(issue: dict) -> dict:
+    """Flatten a raw GitLab issue into the fields the UI/agent care about."""
+    return {
+        "iid": issue.get("iid"),
+        "id": issue.get("id"),
+        "title": issue.get("title"),
+        "state": issue.get("state"),
+        "description": issue.get("description"),
+        "web_url": issue.get("web_url"),
+        "labels": issue.get("labels") or [],
+        "assignees": [a.get("username") for a in (issue.get("assignees") or [])],
+        "author": (issue.get("author") or {}).get("username"),
+        "milestone": (issue.get("milestone") or {}).get("title"),
+        "due_date": issue.get("due_date"),
+        "confidential": issue.get("confidential"),
+        "time_estimate": (issue.get("time_stats") or {}).get("human_time_estimate"),
+        "created_at": issue.get("created_at"),
+        "updated_at": issue.get("updated_at"),
+    }
+
+
+def _format_issue_summary(i: dict, project_path: str = None) -> str:
+    """A concise text summary of an issue (also stored in chat memory)."""
+    where = f" in {project_path}" if project_path else ""
+    lines = [f"**#{i['iid']} {i.get('title') or '(untitled)'}** — {i.get('state', '')}{where}"]
+    meta = []
+    if i.get("assignees"):
+        meta.append("Assignees: " + ", ".join("@" + a for a in i["assignees"]))
+    if i.get("labels"):
+        meta.append("Labels: " + ", ".join(i["labels"]))
+    if i.get("milestone"):
+        meta.append("Milestone: " + i["milestone"])
+    if i.get("due_date"):
+        meta.append("Due: " + i["due_date"])
+    if i.get("time_estimate"):
+        meta.append("Estimate: " + i["time_estimate"])
+    if meta:
+        lines.append(" · ".join(meta))
+    return "\n".join(lines)
+
+
+def build_issue_view(action: GitLabAction) -> dict:
+    """READ-ONLY: fetch a single issue for viewing. Returns {issue, summary, warnings}.
+
+    Executes immediately (no approval gate) since it only reads.
+    """
+    if not action.project:
+        return {"issue": None, "summary": "Which project is the issue in?", "warnings": ["No project specified"]}
+    if action.issue_iid is None:
+        return {"issue": None, "summary": "What's the issue number (IID)?", "warnings": ["No issue IID"]}
+    try:
+        project = gl.find_project(action.project)
+    except GitLabAPIError as e:
+        return {"issue": None, "summary": f"Project lookup failed: {e.message}", "warnings": [e.message]}
+    if not project:
+        return {"issue": None, "summary": f"Project '{action.project}' not found.",
+                "warnings": [f"Project '{action.project}' not found"]}
+    try:
+        raw = gl.get_issue(project["id"], action.issue_iid)
+    except GitLabAPIError as e:
+        return {"issue": None, "summary": f"Couldn't fetch issue #{action.issue_iid}: {e.message}",
+                "warnings": [e.message]}
+    issue = _normalize_issue(raw)
+    issue["project_path"] = project.get("path_with_namespace")
+    issue["project_id"] = project["id"]
+    return {"issue": issue, "summary": _format_issue_summary(issue, project.get("path_with_namespace")), "warnings": []}
+
+
 def _summarize(action: GitLabAction, target: dict) -> str:
     proj = (target.get("project") or {}).get("path") or action.project or "?"
     if action.action == ACTION_CREATE_ISSUE:

@@ -95,6 +95,7 @@ async function onSend() {
     if (!data) { addBubble("assistant", "⚠ " + emptyMsg(r)); return; }
     const bubble = addBubble("assistant", data.reply || "…");
     if (data.proposal) renderProposal(bubble, data.proposal);
+    if (data.issue) renderIssue(bubble, data.issue);
   } catch (e) {
     thinking.remove();
     addBubble("assistant", "⚠ Network error: " + e.message);
@@ -121,6 +122,51 @@ function addBubble(role, text, transient) {
   $("chat").appendChild(wrap);
   scrollToBottom();
   return wrap;
+}
+
+// ── Read-only issue card (get_issue) ────────────────────────────────────
+function renderIssue(bubbleEl, issue) {
+  const card = document.createElement("div");
+  card.className = "issue-view";
+
+  const stateClass = issue.state === "closed" ? "closed" : "opened";
+  card.innerHTML =
+    `<div class="issue-head">` +
+    `<span class="issue-state ${stateClass}">${escapeHtml(issue.state || "")}</span>` +
+    `<span class="issue-title">#${escapeHtml(String(issue.iid))} ${escapeHtml(issue.title || "")}</span>` +
+    `</div>`;
+
+  const rows = [
+    ["Project", issue.project_path],
+    ["Author", issue.author && "@" + issue.author],
+    ["Assignees", (issue.assignees || []).map((a) => "@" + a).join(", ")],
+    ["Labels", (issue.labels || []).join(", ")],
+    ["Milestone", issue.milestone],
+    ["Due date", issue.due_date],
+    ["Estimate", issue.time_estimate],
+  ].filter(([, v]) => v !== null && v !== undefined && v !== "");
+
+  const dl = document.createElement("dl");
+  dl.className = "issue-meta";
+  rows.forEach(([k, v]) => {
+    dl.insertAdjacentHTML("beforeend",
+      `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(String(v))}</dd>`);
+  });
+  card.appendChild(dl);
+
+  if (issue.description) {
+    const desc = document.createElement("div");
+    desc.className = "issue-desc";
+    desc.innerHTML = escapeHtml(issue.description).replace(/\n/g, "<br>");
+    card.appendChild(desc);
+  }
+  if (issue.web_url) {
+    card.insertAdjacentHTML("beforeend",
+      `<div class="issue-link"><a href="${escapeHtml(issue.web_url)}" target="_blank" rel="noopener">Open in GitLab ↗</a></div>`);
+  }
+
+  bubbleEl.querySelector(".bubble").appendChild(card);
+  scrollToBottom();
 }
 
 // ── Proposal card (inline, approval-gated) ──────────────────────────────

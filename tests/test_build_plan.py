@@ -9,7 +9,7 @@ the approval gate) without any network or LLM calls. Run from the project root:
 import pytest
 
 import services.gitlab_service as svc
-from services.gitlab_service import build_action_plan
+from services.gitlab_service import build_action_plan, build_issue_view
 from agents.schema import GitLabAction
 
 
@@ -145,3 +145,32 @@ def test_missing_project_warns():
     action = GitLabAction(action="create_issue", title="No project")
     plan = build_action_plan(action)
     assert any("project" in w.lower() for w in plan["warnings"])
+
+
+def test_build_issue_view(monkeypatch):
+    monkeypatch.setattr(svc.gl, "get_issue", lambda pid, iid: {
+        "iid": iid, "id": 5000, "title": "Broken login", "state": "opened",
+        "description": "It breaks on submit.", "web_url": "https://gl/x/12",
+        "labels": ["bug", "frontend"],
+        "assignees": [{"username": "jdoe"}], "author": {"username": "asmith"},
+        "milestone": {"title": "v1.0"}, "due_date": "2026-08-01",
+        "time_stats": {"human_time_estimate": "3h"},
+    })
+    action = GitLabAction(action="get_issue", project="Mobile App", issue_iid=12)
+    view = build_issue_view(action)
+    i = view["issue"]
+    assert i["iid"] == 12
+    assert i["title"] == "Broken login"
+    assert i["assignees"] == ["jdoe"]
+    assert i["labels"] == ["bug", "frontend"]
+    assert i["milestone"] == "v1.0"
+    assert i["time_estimate"] == "3h"
+    assert i["project_path"] == "group/mobile-app"
+    assert "#12 Broken login" in view["summary"]
+    assert view["warnings"] == []
+
+
+def test_build_issue_view_missing_iid():
+    view = build_issue_view(GitLabAction(action="get_issue", project="Mobile App"))
+    assert view["issue"] is None
+    assert view["warnings"]
