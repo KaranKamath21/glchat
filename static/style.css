@@ -133,6 +133,27 @@ textarea { resize: vertical; }
 .advanced .hint { font-size: 12px; color: var(--muted); }
 .advanced .hint code { color: var(--blue); }
 
+/* ── Read-only issue list ── */
+.msg.assistant:has(.issue-list), .msg.assistant:has(.stats-card) { justify-content: stretch; }
+.bubble:has(.issue-list), .bubble:has(.stats-card) { max-width: 100%; width: 100%; }
+.issue-list { margin-top: 12px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.issue-row { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.issue-row:last-child { border-bottom: none; }
+.issue-row:nth-child(even) { background: rgba(255,255,255,.02); }
+.issue-row-main { display: flex; flex-direction: column; gap: 2px; }
+.issue-row-main a { color: var(--blue); font-weight: 600; }
+.issue-row-meta { color: var(--muted); font-size: 12px; }
+.issue-state.sm { font-size: 10px; padding: 1px 7px; }
+
+/* ── Statistics tiles ── */
+.stats-card { margin-top: 12px; display: flex; gap: 12px; }
+.stat-tile { flex: 1; background: var(--card-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; text-align: center; }
+.stat-num { font-size: 26px; font-weight: 700; }
+.stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.stat-tile.opened .stat-num { color: var(--green); }
+.stat-tile.closed .stat-num { color: var(--red); }
+.stat-tile.all .stat-num { color: var(--blue); }
+
 /* ── Read-only issue card ── */
 .msg.assistant:has(.issue-view) { justify-content: stretch; }
 .bubble:has(.issue-view) { max-width: 100%; width: 100%; }

@@ -127,6 +127,23 @@ class GitLabClient:
                 return p
         return results[0]
 
+    def find_group(self, name_or_path: str) -> dict | None:
+        """Resolve a group by path/id (preferred) or fuzzy name search."""
+        if not name_or_path:
+            return None
+        if "/" in name_or_path or str(name_or_path).isdigit():
+            try:
+                return self.get(f"/groups/{quote(str(name_or_path), safe='')}")
+            except GitLabAPIError as e:
+                if e.status != 404:
+                    raise
+        results = self.get_all("/groups", {"search": name_or_path})
+        lowered = name_or_path.lower()
+        for g in results:
+            if g.get("full_path", "").lower() == lowered or g.get("name", "").lower() == lowered:
+                return g
+        return results[0] if results else None
+
     def find_user(self, username_or_name: str) -> dict | None:
         if not username_or_name:
             return None
@@ -478,6 +495,115 @@ def build_issue_view(action: GitLabAction) -> dict:
     issue["project_path"] = project.get("path_with_namespace")
     issue["project_id"] = project["id"]
     return {"issue": issue, "summary": _format_issue_summary(issue, project.get("path_with_namespace")), "warnings": []}
+
+
+def _normalize_issue_brief(issue: dict) -> dict:
+    """Compact issue row for lists (no description)."""
+    return {
+        "iid": issue.get("iid"),
+        "title": issue.get("title"),
+        "state": issue.get("state"),
+        "web_url": issue.get("web_url"),
+        "labels": issue.get("labels") or [],
+        "assignees": [a.get("username") for a in (issue.get("assignees") or [])],
+        "milestone": (issue.get("milestone") or {}).get("title"),
+        "due_date": issue.get("due_date"),
+        "project_path": (issue.get("references") or {}).get("full", "").split("#")[0] or None,
+    }
+
+
+def _list_filter_params(action: GitLabAction) -> dict:
+    """Map a GitLabAction's filter fields to the list/stats query params."""
+    params = {}
+    if action.state_filter:
+        params["state"] = action.state_filter
+    if action.search:
+        params["search"] = action.search
+    if action.labels:
+        params["labels"] = ",".join(action.labels)
+    if action.milestone:
+        params["milestone"] = action.milestone
+    if action.author:
+        params["author_username"] = action.author
+    if action.assignees:
+        params["assignee_username"] = list(action.assignees)
+    return params
+
+
+def _resolve_list_scope(action: GitLabAction, warnings: list):
+    """Pick the endpoint scope: project, group, or global. Returns (base_path, where)."""
+    if action.project:
+        try:
+            project = gl.find_project(action.project)
+        except GitLabAPIError as e:
+            warnings.append(f"Project lookup failed: {e.message}")
+            return None, None
+        if not project:
+            warnings.append(f"Project '{action.project}' not found")
+            return None, None
+        return f"/projects/{project['id']}", project.get("path_with_namespace")
+    if action.group:
+        try:
+            group = gl.find_group(action.group)
+        except GitLabAPIError as e:
+            warnings.append(f"Group lookup failed: {e.message}")
+            return None, None
+        if not group:
+            warnings.append(f"Group '{action.group}' not found")
+            return None, None
+        return f"/groups/{group['id']}", group.get("full_path")
+    return "", "your issues"  # global /issues
+
+
+def build_issue_list(action: GitLabAction) -> dict:
+    """READ-ONLY: list/search issues in a project, group, or globally."""
+    warnings = []
+    base, where = _resolve_list_scope(action, warnings)
+    if base is None:
+        return {"issues": [], "summary": warnings[0] if warnings else "Nothing to list.", "warnings": warnings}
+
+    params = _list_filter_params(action)
+    limit = min(action.max_results or MAX_SEARCH_RESULTS, 100)
+    params["per_page"] = limit
+    params["page"] = 1
+    if base == "":  # global scope requires a scope value
+        params["scope"] = action.scope or "assigned_to_me"
+
+    path = f"{base}/issues"
+    try:
+        raw = gl.get(path, params) or []
+    except GitLabAPIError as e:
+        return {"issues": [], "summary": f"Couldn't list issues: {e.message}", "warnings": [e.message]}
+
+    issues = [_normalize_issue_brief(i) for i in raw]
+    more = " (showing first %d — refine to narrow)" % limit if len(issues) >= limit else ""
+    summary = f"Found {len(issues)} issue(s) in {where}{more}."
+    return {
+        "issues": issues,
+        "summary": summary,
+        "warnings": warnings,
+        "endpoint": {"method": "GET", "path": path},
+    }
+
+
+def build_issue_statistics(action: GitLabAction) -> dict:
+    """READ-ONLY: counts of opened/closed/all issues for a project, group, or globally."""
+    warnings = []
+    base, where = _resolve_list_scope(action, warnings)
+    if base is None:
+        return {"statistics": None, "summary": warnings[0] if warnings else "Nothing to count.", "warnings": warnings}
+
+    params = _list_filter_params(action)
+    path = f"{base}/issues_statistics"
+    try:
+        data = gl.get(path, params) or {}
+    except GitLabAPIError as e:
+        return {"statistics": None, "summary": f"Couldn't get statistics: {e.message}", "warnings": [e.message]}
+
+    counts = (data.get("statistics") or {}).get("counts") or {}
+    summary = (f"Issues in {where} — open: {counts.get('opened', '?')}, "
+               f"closed: {counts.get('closed', '?')}, all: {counts.get('all', '?')}.")
+    return {"statistics": counts, "summary": summary, "warnings": warnings}
 
 
 def _summarize(action: GitLabAction, target: dict) -> str:

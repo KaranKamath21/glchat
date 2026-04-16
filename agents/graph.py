@@ -25,11 +25,15 @@ from agents.schema import (
     GitLabAction,
     READ_ACTIONS,
     ACTION_GET_ISSUE,
+    ACTION_LIST_ISSUES,
+    ACTION_ISSUE_STATISTICS,
 )
 from agents.memory import get_checkpointer, memory_lock
 from services.gitlab_service import (
     build_action_plan,
     build_issue_view,
+    build_issue_list,
+    build_issue_statistics,
     GitLabAPIError,
 )
 
@@ -118,7 +122,7 @@ def chat_turn(thread_id: str, text: str) -> dict:
         return {"reply": "…", "proposal": None}
 
     reply = _text_of(ai)
-    result = {"reply": reply or "…", "proposal": None, "issue": None}
+    result = {"reply": reply or "…", "proposal": None, "issue": None, "issues": None, "statistics": None}
 
     action_call = next(
         (tc for tc in (ai.tool_calls or []) if tc["name"] == GitLabAction.__name__), None
@@ -152,10 +156,16 @@ def chat_turn(thread_id: str, text: str) -> dict:
 
 
 def _run_read_action(action: GitLabAction) -> dict:
-    """Run a read-only action and return the UI keys (issue) + summary."""
+    """Run a read-only action and return the UI keys (issue / issues / statistics) + summary."""
     if action.action == ACTION_GET_ISSUE:
         view = build_issue_view(action)
         return {"issue": view.get("issue"), "summary": view["summary"]}
+    if action.action == ACTION_LIST_ISSUES:
+        res = build_issue_list(action)
+        return {"issues": res.get("issues"), "summary": res["summary"]}
+    if action.action == ACTION_ISSUE_STATISTICS:
+        res = build_issue_statistics(action)
+        return {"statistics": res.get("statistics"), "summary": res["summary"]}
     return {"summary": ""}
 
 

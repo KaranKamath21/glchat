@@ -96,6 +96,8 @@ async function onSend() {
     const bubble = addBubble("assistant", data.reply || "…");
     if (data.proposal) renderProposal(bubble, data.proposal);
     if (data.issue) renderIssue(bubble, data.issue);
+    if (data.issues && data.issues.length) renderIssueList(bubble, data.issues);
+    if (data.statistics) renderStats(bubble, data.statistics);
   } catch (e) {
     thinking.remove();
     addBubble("assistant", "⚠ Network error: " + e.message);
@@ -122,6 +124,49 @@ function addBubble(role, text, transient) {
   $("chat").appendChild(wrap);
   scrollToBottom();
   return wrap;
+}
+
+// ── Read-only issue list (list_issues) ──────────────────────────────────
+function renderIssueList(bubbleEl, issues) {
+  const card = document.createElement("div");
+  card.className = "issue-list";
+  issues.forEach((i) => {
+    const stateClass = i.state === "closed" ? "closed" : "opened";
+    const meta = [];
+    if ((i.assignees || []).length) meta.push((i.assignees).map((a) => "@" + a).join(", "));
+    if ((i.labels || []).length) meta.push(i.labels.join(", "));
+    if (i.milestone) meta.push("◆ " + i.milestone);
+    if (i.due_date) meta.push("due " + i.due_date);
+    const row = document.createElement("div");
+    row.className = "issue-row";
+    const link = i.web_url
+      ? `<a href="${escapeHtml(i.web_url)}" target="_blank" rel="noopener">#${escapeHtml(String(i.iid))}</a>`
+      : `#${escapeHtml(String(i.iid))}`;
+    row.innerHTML =
+      `<span class="issue-state ${stateClass} sm">${escapeHtml(i.state || "")}</span>` +
+      `<span class="issue-row-main">${link} ${escapeHtml(i.title || "")}` +
+      (meta.length ? `<span class="issue-row-meta">${escapeHtml(meta.join(" · "))}</span>` : "") +
+      `</span>`;
+    card.appendChild(row);
+  });
+  bubbleEl.querySelector(".bubble").appendChild(card);
+  scrollToBottom();
+}
+
+// ── Read-only statistics card (issue_statistics) ────────────────────────
+function renderStats(bubbleEl, stats) {
+  const card = document.createElement("div");
+  card.className = "stats-card";
+  const tiles = [
+    ["Open", stats.opened, "opened"],
+    ["Closed", stats.closed, "closed"],
+    ["All", stats.all, "all"],
+  ];
+  card.innerHTML = tiles.map(([label, val, cls]) =>
+    `<div class="stat-tile ${cls}"><div class="stat-num">${escapeHtml(String(val ?? "?"))}</div>` +
+    `<div class="stat-label">${escapeHtml(label)}</div></div>`).join("");
+  bubbleEl.querySelector(".bubble").appendChild(card);
+  scrollToBottom();
 }
 
 // ── Read-only issue card (get_issue) ────────────────────────────────────

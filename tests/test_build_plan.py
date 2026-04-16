@@ -9,7 +9,7 @@ the approval gate) without any network or LLM calls. Run from the project root:
 import pytest
 
 import services.gitlab_service as svc
-from services.gitlab_service import build_action_plan, build_issue_view
+from services.gitlab_service import build_action_plan, build_issue_view, build_issue_list, build_issue_statistics
 from agents.schema import GitLabAction
 
 
@@ -174,3 +174,59 @@ def test_build_issue_view_missing_iid():
     view = build_issue_view(GitLabAction(action="get_issue", project="Mobile App"))
     assert view["issue"] is None
     assert view["warnings"]
+
+
+def _capture_get(monkeypatch, return_value):
+    calls = {}
+
+    def fake_get(path, params=None):
+        calls["path"] = path
+        calls["params"] = params or {}
+        return return_value
+
+    monkeypatch.setattr(svc.gl, "get", fake_get)
+    return calls
+
+
+def test_list_issues_project_with_filters(monkeypatch):
+    calls = _capture_get(monkeypatch, [
+        {"iid": 1, "title": "A", "state": "opened", "web_url": "u1",
+         "labels": ["bug"], "assignees": [{"username": "jdoe"}],
+         "milestone": {"title": "v1"},
+         "references": {"full": "group/mobile-app#1"}},
+        {"iid": 2, "title": "B", "state": "opened", "web_url": "u2", "labels": [], "assignees": []},
+    ])
+    action = GitLabAction(action="list_issues", project="Mobile App",
+                          state_filter="opened", labels=["bug"], assignees=["jdoe"], search="crash")
+    res = build_issue_list(action)
+    assert calls["path"] == "/projects/42/issues"
+    assert calls["params"]["state"] == "opened"
+    assert calls["params"]["labels"] == "bug"
+    assert calls["params"]["assignee_username"] == ["jdoe"]
+    assert calls["params"]["search"] == "crash"
+    assert len(res["issues"]) == 2
+    assert res["issues"][0]["iid"] == 1
+    assert res["issues"][0]["assignees"] == ["jdoe"]
+
+
+def test_list_issues_global_defaults_scope(monkeypatch):
+    calls = _capture_get(monkeypatch, [])
+    res = build_issue_list(GitLabAction(action="list_issues"))
+    assert calls["path"] == "/issues"
+    assert calls["params"]["scope"] == "assigned_to_me"   # default for global
+    assert res["issues"] == []
+
+
+def test_list_issues_group_scope(monkeypatch):
+    monkeypatch.setattr(svc.gl, "find_group", lambda n: {"id": 88, "full_path": "group", "name": "Group"})
+    calls = _capture_get(monkeypatch, [])
+    build_issue_list(GitLabAction(action="list_issues", group="Group"))
+    assert calls["path"] == "/groups/88/issues"
+
+
+def test_issue_statistics(monkeypatch):
+    calls = _capture_get(monkeypatch, {"statistics": {"counts": {"all": 8, "closed": 5, "opened": 3}}})
+    res = build_issue_statistics(GitLabAction(action="issue_statistics", project="Mobile App", state_filter="all"))
+    assert calls["path"] == "/projects/42/issues_statistics"
+    assert res["statistics"] == {"all": 8, "closed": 5, "opened": 3}
+    assert "open: 3" in res["summary"]

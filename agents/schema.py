@@ -16,6 +16,8 @@ ACTION_ADD_COMMENT = "add_comment"
 ACTION_LINK_ISSUES = "link_issues"
 ACTION_CREATE_CHILD_ITEM = "create_child_item"
 ACTION_GET_ISSUE = "get_issue"
+ACTION_LIST_ISSUES = "list_issues"
+ACTION_ISSUE_STATISTICS = "issue_statistics"
 
 ACTIONS = [
     ACTION_CREATE_ISSUE,
@@ -24,10 +26,12 @@ ACTIONS = [
     ACTION_LINK_ISSUES,
     ACTION_CREATE_CHILD_ITEM,
     ACTION_GET_ISSUE,
+    ACTION_LIST_ISSUES,
+    ACTION_ISSUE_STATISTICS,
 ]
 
 # Read-only actions execute immediately (no approval gate).
-READ_ACTIONS = {ACTION_GET_ISSUE}
+READ_ACTIONS = {ACTION_GET_ISSUE, ACTION_LIST_ISSUES, ACTION_ISSUE_STATISTICS}
 
 
 class GitLabAction(BaseModel):
@@ -47,7 +51,9 @@ class GitLabAction(BaseModel):
             "The type of action. One of: 'create_issue', 'update_issue', "
             "'add_comment', 'link_issues' (relate/block two issues), "
             "'create_child_item' (create a sub-item under a parent issue), "
-            "'get_issue' (view/show an existing issue's details)."
+            "'get_issue' (view/show an existing issue's details), 'list_issues' "
+            "(search/list issues with filters), 'issue_statistics' (counts of "
+            "open/closed/all)."
         )
     )
 
@@ -127,4 +133,27 @@ class GitLabAction(BaseModel):
     work_item_type: Optional[str] = Field(
         default=None,
         description="For create_child_item: the child's work-item type, e.g. 'task' (default) or 'issue'.",
+    )
+
+    # ── Listing / searching (list_issues, issue_statistics) ───────────────
+    group: Optional[str] = Field(
+        default=None,
+        description="For list_issues/issue_statistics: a group name/path to scope the search to (instead of a project).",
+    )
+    scope: Optional[str] = Field(
+        default=None,
+        description="For list_issues with no project/group: 'assigned_to_me', 'created_by_me', or 'all'.",
+    )
+    state_filter: Optional[str] = Field(
+        default=None,
+        description="For list_issues/issue_statistics: filter by state — 'opened', 'closed', or 'all'.",
+    )
+    search: Optional[str] = Field(
+        default=None, description="For list_issues: free-text to search in issue titles/descriptions."
+    )
+    author: Optional[str] = Field(
+        default=None, description="For list_issues: filter to issues authored by this username."
+    )
+    max_results: Optional[int] = Field(
+        default=None, description="For list_issues: maximum number of issues to return."
     )
