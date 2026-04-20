@@ -34,6 +34,19 @@ ACTIONS = [
 READ_ACTIONS = {ACTION_GET_ISSUE, ACTION_LIST_ISSUES, ACTION_ISSUE_STATISTICS}
 
 
+class IssueLookup(BaseModel):
+    """Fetch an existing issue's CURRENT title, description, labels, and fields (read-only).
+
+    Call this before enhancing or editing an existing issue, so you can improve its real
+    current content (e.g. rewrite the description, expand acceptance criteria) instead of
+    guessing. Do NOT call it for brand-new issues. After you receive the content, call
+    GitLabAction (update_issue) with the improved fields.
+    """
+
+    project: str = Field(description="Project name or path the issue belongs to.")
+    issue_iid: int = Field(description="The issue's internal ID (the #number).")
+
+
 class GitLabAction(BaseModel):
     """Propose a GitLab issue or comment action for the user to approve.
 

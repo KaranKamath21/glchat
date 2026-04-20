@@ -7,6 +7,7 @@ reply is a normal chat turn. The compiled graph uses the Postgres checkpointer,
 so every turn is contextual and history persists across restarts.
 """
 
+import json
 import logging
 from datetime import date
 from functools import lru_cache
@@ -23,6 +24,7 @@ from agents.llm import get_groq_model, get_bedrock_model
 from agents.prompt import build_chatbot_prompt
 from agents.schema import (
     GitLabAction,
+    IssueLookup,
     READ_ACTIONS,
     ACTION_GET_ISSUE,
     ACTION_LIST_ISSUES,
@@ -30,6 +32,7 @@ from agents.schema import (
 )
 from agents.memory import get_checkpointer, memory_lock
 from services.gitlab_service import (
+    gl,
     build_action_plan,
     build_issue_view,
     build_issue_list,
@@ -39,8 +42,10 @@ from services.gitlab_service import (
 
 logger = logging.getLogger(__name__)
 
-# GitLabAction is a *proposal* signal — it is never executed here.
-_TOOLS = [GitLabAction]
+# Tools bound to the model. GitLabAction is a *proposal* signal (never executed here);
+# IssueLookup is a read-only fetch that IS executed so the model can enhance real content.
+_TOOLS = [GitLabAction, IssueLookup]
+MAX_TOOL_STEPS = 4
 
 
 def _text_of(message) -> str:
@@ -76,23 +81,74 @@ def _invoke_llm(messages):
             raise groq_err
 
 
+def _run_issue_lookup(args: dict) -> dict:
+    """Execute the read-only IssueLookup tool: fetch an issue's current content."""
+    project = args.get("project")
+    iid = args.get("issue_iid")
+    try:
+        proj = gl.find_project(project) if project else None
+        if not proj:
+            return {"error": f"Project '{project}' not found"}
+        issue = gl.get_issue(proj["id"], iid)
+    except GitLabAPIError as e:
+        return {"error": e.message}
+    return {
+        "project_id": proj["id"],
+        "project_path": proj.get("path_with_namespace"),
+        "iid": issue.get("iid"),
+        "title": issue.get("title"),
+        "description": (issue.get("description") or "")[:6000],
+        "labels": issue.get("labels"),
+        "state": issue.get("state"),
+        "due_date": issue.get("due_date"),
+        "assignees": [a.get("username") for a in (issue.get("assignees") or [])],
+        "milestone": (issue.get("milestone") or {}).get("title"),
+        "web_url": issue.get("web_url"),
+    }
+
+
 def _agent_node(state):
     """One conversation turn.
 
-    The model either replies in plain text or calls GitLabAction to propose an
-    (approval-gated) action. The tool call is never executed — only acknowledged,
-    so the message history stays valid for the next turn.
+    Runs a bounded tool loop: the model may call IssueLookup (read-only, executed here)
+    to fetch an existing issue's content, then reply or call GitLabAction to propose an
+    (approval-gated) action. GitLabAction is never executed — only acknowledged.
     """
     today = date.today().isoformat()
     convo = [SystemMessage(content=build_chatbot_prompt(today))] + list(state["messages"])
+    produced = []
 
-    resp = _invoke_llm(convo)
-    produced = [resp]
-    for tc in resp.tool_calls or []:
-        produced.append(ToolMessage(
-            content="Handled by the app and shown to the user.",
-            tool_call_id=tc["id"],
-        ))
+    for _ in range(MAX_TOOL_STEPS):
+        resp = _invoke_llm(convo)
+        convo.append(resp)
+        produced.append(resp)
+
+        tool_calls = resp.tool_calls or []
+        lookup_calls = [tc for tc in tool_calls if tc["name"] == IssueLookup.__name__]
+
+        if lookup_calls:
+            # Execute read-only lookups and feed results back so the model can enhance.
+            for tc in tool_calls:
+                if tc["name"] == IssueLookup.__name__:
+                    content = json.dumps(_run_issue_lookup(tc.get("args") or {}))[:6000]
+                else:
+                    # A proposal call made prematurely alongside a lookup — acknowledge so
+                    # history stays valid; the model should re-propose after the lookup.
+                    content = "Fetch the issue first, then propose the update."
+                tm = ToolMessage(content=content, tool_call_id=tc["id"])
+                convo.append(tm)
+                produced.append(tm)
+            continue  # loop back to the model with the fetched content
+
+        # No lookups: this is the final turn (chat reply or a GitLabAction call, which the
+        # app handles — either showing read-only results or a proposal for approval).
+        for tc in tool_calls:
+            produced.append(ToolMessage(
+                content="Handled by the app and shown to the user.",
+                tool_call_id=tc["id"],
+            ))
+        break
+
     return {"messages": produced}
 
 
