@@ -176,6 +176,31 @@ def test_build_issue_view_missing_iid():
     assert view["warnings"]
 
 
+def test_string_numbers_and_bools_are_coerced():
+    # Groq/LLMs sometimes emit "2" instead of 2; the schema must coerce it.
+    a = GitLabAction(
+        action="create_issue", project="Mobile App", title="X",
+        issue_iid="12", target_issue_iid="20", confidential="true",
+    )
+    assert a.issue_iid == 12 and isinstance(a.issue_iid, int)
+    assert a.target_issue_iid == 20
+    assert a.confidential is True
+    # And a coerced action still builds a valid payload.
+    plan = build_action_plan(GitLabAction(
+        action="link_issues", project="Mobile App", issue_iid="10", target_issue_iid="20"))
+    assert plan["payload"]["target_issue_iid"] == 20
+
+
+def test_unparseable_number_becomes_none():
+    a = GitLabAction(action="create_issue", project="Mobile App", title="X", issue_iid="twelve")
+    assert a.issue_iid is None
+
+
+def test_issue_lookup_coerces_iid():
+    from agents.schema import IssueLookup
+    assert IssueLookup(project="Mobile App", issue_iid="42").issue_iid == 42
+
+
 def _capture_get(monkeypatch, return_value):
     calls = {}
 

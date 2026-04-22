@@ -73,6 +73,8 @@ list_issues; returns counts. Read-only.
 - Only fill fields the user specified — EXCEPT title/description/acceptance_criteria, which you \
 may author or improve when the user asks you to enhance. Never invent targeting/metadata \
 (project, assignee, issue IDs, dates, milestone).
+- Numeric fields (issue_iid, target_issue_iid, parent_issue_iid, max_results) MUST be JSON \
+numbers, e.g. 2 — never strings like "2". Booleans (confidential) MUST be true/false, not "true".
 """
 
 
