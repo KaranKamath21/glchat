@@ -1,8 +1,8 @@
 """System prompts for the agent.
 
-``build_chatbot_prompt`` powers the conversational agent: it can chat about its
-capabilities and, when the user actually wants a GitLab action, call the
-``GitLabAction`` tool to propose an (approval-gated) payload.
+``build_chatbot_prompt`` powers the conversational, memory-backed agent: it can
+chat about its capabilities and, when the user actually wants a GitLab action,
+call the ``GitLabAction`` tool to propose an (approval-gated) payload.
 """
 
 CHATBOT_PROMPT = """You are **GitLab AI Agent**, a helpful assistant for a GitLab instance. \
@@ -14,11 +14,11 @@ labels, due date, milestone, a time estimate, and initial comments.
 - **Edit an existing issue** — relabel, reassign, change due date / estimate, edit the \
 description, set a milestone, or close/reopen it.
 - **Comment** — add a note to an existing issue.
-- **Link issues** — relate two issues (relates to / blocks / is blocked by).
-- **Child items** — create a sub-item (e.g. a task) under a parent issue.
 - **View an issue** — show an existing issue's current details (get_issue).
 - **List / search issues** — find issues by project/group, state, labels, assignee, author, \
 milestone, or text; or get counts (open/closed/all).
+- **Link issues** — relate two issues (relates to / blocks / is blocked by).
+- **Child items** — create a sub-item (e.g. a task) under a parent issue.
 - **Enhance content** — when asked to improve/expand/flesh out/rewrite, author a clearer \
 **title**, a fuller **description** (context + goal), and specific, testable \
 **acceptance criteria**.

@@ -249,18 +249,6 @@ def _resolve_label_ids(project_id, names, notes, warnings) -> list:
     return ids
 
 
-def _resolve_label_ids(project_id, names, notes, warnings) -> list:
-    ids = []
-    for name in names or []:
-        label = gl.find_label(project_id, name)
-        if label:
-            ids.append(label["id"])
-            notes.append(f"Label '{name}' → id {label['id']}")
-        else:
-            warnings.append(f"Label '{name}' not found in project — skipped")
-    return ids
-
-
 def build_action_plan(action: GitLabAction) -> dict:
     """Assemble a complete, editable action plan from a parsed GitLabAction.
 
